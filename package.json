@@ -1,0 +1,33 @@
+{
+  "name": "@latch/node",
+  "version": "0.1.0",
+  "description": "Latch server SDK for Node.js: evaluates feature flags in-process from a synced ruleset.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/inkress/latch-node.git"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "sync-engine": "sh scripts/sync-engine.sh"
+  },
+  "packageManager": "pnpm@10.26.0",
+  "dependencies": {
+    "re2js": "^2.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}
