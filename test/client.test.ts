@@ -40,6 +40,16 @@ describe("node SDK", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("a flag waits on its prerequisite: off while the parent is off, on once the parent serves the required value (LAT-23)", async () => {
+    const child = flag("child", { prerequisites: [{ flag: "parent", variant: "on" }] } as never);
+    const { client: offClient } = start(() => json(rulesetBody(1, [flag("parent", { enabled: false }), child])));
+    await offClient.waitForReady();
+    expect(await offClient.boolVariation("child", { targetingKey: "u1" }, true)).toBe(false);
+    const { client: onClient } = start(() => json(rulesetBody(2, [flag("parent"), child])));
+    await onClient.waitForReady();
+    expect(await onClient.boolVariation("child", { targetingKey: "u1" }, false)).toBe(true);
+  });
+
   it("detail methods say why, and return the default with an error code for a missing flag or wrong type", async () => {
     const { client } = start(() => json(rulesetBody(1, flags)));
     await client.waitForReady();

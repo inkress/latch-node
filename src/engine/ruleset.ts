@@ -56,7 +56,7 @@ export function evaluateAll(
   scope: string,
 ): BulkResult {
   const byKey: ReadonlyMap<string, Flag> = isFlagList(flags) ? new Map(flags.map((flag) => [flag.key, flag] as const)) : flags;
-  const withSegments: Resolved = { ...resolved, segments };
+  const withSegments: Resolved = { ...resolved, segments, flags: byKey };
   const selected: Flag[] = [];
   if (keys === "all") selected.push(...byKey.values());
   else

@@ -20,7 +20,7 @@ import { compareNumbers, elixirNumberToString } from "./elixir-number.ts";
 import { elixirEquals, same } from "./equality.ts";
 import { errorEvaluation, okEvaluation } from "./evaluation.ts";
 import { isJsonObject } from "./context.ts";
-import { RAW_NUMBER_DETAILS, INTERNAL_ERROR_DETAILS, recordInternalError, valueOfKind } from "./evaluator.ts";
+import { PREREQUISITE_DEPTH_LIMIT, RAW_NUMBER_DETAILS, INTERNAL_ERROR_DETAILS, recordInternalError, valueOfKind } from "./evaluator.ts";
 import { ipInCidr } from "./ip.ts";
 import { isJNumber, parseJson } from "./json.ts";
 import { orderingSatisfies, stringOp } from "./operators.ts";
@@ -29,7 +29,7 @@ import { etag } from "./ruleset.ts";
 import type { BulkResult } from "./ruleset.ts";
 import { WORK_BUDGET } from "./safe-regex.ts";
 import { ErrorCode, Reason, getOwn } from "./types.ts";
-import type { Context, Evaluation, JNumber, JsonValue, Resolved } from "./types.ts";
+import type { Context, Evaluation, JNumber, JsonValue, Prerequisite, Resolved } from "./types.ts";
 import { decodeFlag, decodeSegment, loadFrom, patternHandle, serializeWith, slotCost } from "./compile-codec.ts";
 import {
   BudgetCost, Broken, CompileCost, SMALL_KEY_LIST, attempt, compareKeys, compileFlag, compileSegment, deepFreeze, measure, newRuleset, ok, readSource,
@@ -161,6 +161,8 @@ interface State {
   spent: number;
   /** Segment conditions never see other segments (`EMPTY_RESOLVED`). */
   segmentsVisible: boolean;
+  /** The flags being evaluated for a prerequisite check, outermost first (LAT-23): a flag already on it is a cycle. */
+  readonly prerequisiteTrail: string[];
 }
 
 function newState(ruleset: CompiledRuleset, context: Context, planFeaturesOrNull: ReadonlyMap<string, JsonValue> | null, attributes: Map<string, JsonValue>, budget: number): State {
@@ -177,6 +179,7 @@ function newState(ruleset: CompiledRuleset, context: Context, planFeaturesOrNull
     budget,
     spent: 0,
     segmentsVisible: true,
+    prerequisiteTrail: [],
   };
 }
 
@@ -455,9 +458,36 @@ function targetVariant(flag: CompiledFlag, state: State): string | null {
   return null;
 }
 
+/** Latch (LAT-23), mirrors `unmetPrerequisite` in evaluator.ts: the first prerequisite not met for this context, or null. */
+function unmetPrerequisite(flag: CompiledFlag, prerequisites: readonly Prerequisite[], state: State): string | null {
+  const trail = state.prerequisiteTrail;
+  for (const prerequisite of prerequisites) {
+    const slot = state.ruleset.flags.get(prerequisite.flag);
+    if (slot === undefined || slot.key === flag.key || trail.includes(slot.key) || trail.length >= PREREQUISITE_DEPTH_LIMIT) return prerequisite.flag;
+    const parent = ok(flagOf(slot, state));
+    trail.push(flag.key);
+    let result: Evaluation;
+    try {
+      result = evaluateFlag(parent, state);
+    } finally {
+      trail.pop();
+    }
+    if (result.errorCode !== null || result.variant !== prerequisite.variant) return prerequisite.flag;
+  }
+  return null;
+}
+
 function evaluateFlag(flag: CompiledFlag, state: State): Evaluation {
   charge(state, BudgetCost.flag);
   if (!flag.enabled) return served(flag, flag.offVariant, Reason.Disabled);
+
+  if (flag.prerequisites !== undefined) {
+    const unmet = unmetPrerequisite(flag, flag.prerequisites, state);
+    if (unmet !== null) {
+      const off = served(flag, flag.offVariant, Reason.Disabled);
+      return off.errorCode !== null ? off : { ...off, metadata: { ...off.metadata, prerequisite: unmet } };
+    }
+  }
 
   const target = targetVariant(flag, state);
   if (target !== null) return served(flag, target, Reason.TargetingMatch);
