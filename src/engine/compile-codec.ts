@@ -23,7 +23,7 @@ import type * as Operand from "./operand.ts";
 import { loadPattern } from "./safe-regex.ts";
 import type { CompiledPattern, PatternData } from "./safe-regex.ts";
 import { jfloat, jint } from "./types.ts";
-import type { JNumber, JsonValue, Variant, WeightedVariant } from "./types.ts";
+import type { JNumber, JsonValue, Prerequisite, Variant, WeightedVariant } from "./types.ts";
 
 export const FORMAT_VERSION = 1;
 
@@ -80,6 +80,8 @@ interface EncodedFlag {
   readonly t: Enc<readonly Enc<{ readonly v: string; readonly k: Enc<EncodedList> }>[]>;
   readonly r: Enc<readonly Enc<EncodedRule>[]>;
   readonly f: Enc<EncodedServe>;
+  /** Prerequisites as `[flag key, variant key]`; written only for a flag that has them, so other flags encode as before. */
+  readonly q?: readonly (readonly [string, string])[];
 }
 interface EncodedSegment {
   readonly i: Enc<EncodedList>;
@@ -219,6 +221,7 @@ export function encodeFlag(flag: CompiledFlag, pool: ListPool): string {
       rules.map((rule) => mapPart(rule, (r): EncodedRule => ({ id: r.id, c: encodeConditions(r.conditions, pool), s: mapPart(r.serve, encodeServe) }))),
     ),
     f: mapPart(flag.fallthrough, encodeServe),
+    ...(flag.prerequisites === undefined ? {} : { q: flag.prerequisites.map((p) => [p.flag, p.variant] as const) }),
   };
   return JSON.stringify(encoded);
 }
@@ -320,6 +323,7 @@ export function decodeFlag(text: string, pools: Pools): CompiledFlag {
     targets: unmapPart(f.t, (list) => list.map((target) => unmapPart(target, (t) => ({ variant: t.v, keys: decodeKeys(t.k, pools) })))),
     rules: unmapPart(f.r, (list) => list.map((rule) => unmapPart(rule, (r) => ({ id: r.id, conditions: decodeConditions(r.c, pools), serve: unmapPart(r.s, decodeServe) })))),
     fallthrough: unmapPart(f.f, decodeServe),
+    ...(f.q === undefined ? {} : { prerequisites: f.q.map(([flag, variant]): Prerequisite => ({ flag, variant })) }),
   };
 }
 

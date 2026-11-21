@@ -11,7 +11,7 @@ import * as Operand from "./operand.ts";
 import { compilePattern } from "./safe-regex.ts";
 import type { CompiledPattern } from "./safe-regex.ts";
 import { Op } from "./types.ts";
-import type { Condition, Flag, JNumber, JsonValue, Rule, Segment, Serve, Variant, WeightedVariant } from "./types.ts";
+import type { Condition, Flag, JNumber, JsonValue, Prerequisite, Rule, Segment, Serve, Variant, WeightedVariant } from "./types.ts";
 import type { NumericOperator, StringOperator } from "./operators.ts";
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -198,6 +198,8 @@ export interface CompiledFlag {
   readonly targets: Part<readonly Part<CompiledTarget>[]>;
   readonly rules: Part<readonly Part<CompiledRule>[]>;
   readonly fallthrough: Part<CompiledServe>;
+  /** Latch (LAT-23): present only on a flag that has prerequisites. */
+  readonly prerequisites?: readonly Prerequisite[];
 }
 
 /** Where a serialised chunk lives. */
@@ -398,6 +400,7 @@ export function compileFlag(ruleset: CompiledRuleset, flag: Flag): CompiledFlag 
     targets: attempt(() => flag.targets.map((target) => attempt((): CompiledTarget => ({ variant: target.variant, keys: attempt(() => stringList(target.keys)) })))),
     rules: attempt(() => flag.rules.map((rule) => attempt(() => compileRule(ruleset, rule)))),
     fallthrough: attempt(() => compileServe(flag.fallthrough)),
+    ...(flag.prerequisites !== undefined && flag.prerequisites.length > 0 ? { prerequisites: flag.prerequisites.map((p) => ({ flag: p.flag, variant: p.variant })) } : {}),
   };
 }
 

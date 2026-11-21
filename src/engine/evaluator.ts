@@ -141,8 +141,27 @@ function putMeta(evaluation: Evaluation, key: string, value: string): Evaluation
   return { ...evaluation, metadata: { ...evaluation.metadata, [key]: value } };
 }
 
-function evaluateObject(flag: Flag, context: Context, resolved: Resolved): Evaluation {
+/** How many flags deep a prerequisite chain may go; a longer chain (or a cycle) counts as not met. */
+export const PREREQUISITE_DEPTH_LIMIT = 16;
+
+/** Latch (LAT-23): the first prerequisite whose parent does not serve the wanted variant for this context, or null when all are met. */
+function unmetPrerequisite(flag: Flag, context: Context, resolved: Resolved, trail: readonly string[]): string | null {
+  for (const prerequisite of flag.prerequisites ?? []) {
+    const parent = resolved.flags?.get(prerequisite.flag);
+    if (parent === undefined || trail.includes(parent.key) || parent.key === flag.key || trail.length >= PREREQUISITE_DEPTH_LIMIT) return prerequisite.flag;
+    const result = evaluateObject(parent, context, resolved, [...trail, flag.key]);
+    if (result.errorCode !== null || result.variant !== prerequisite.variant) return prerequisite.flag;
+  }
+  return null;
+}
+
+function evaluateObject(flag: Flag, context: Context, resolved: Resolved, trail: readonly string[] = []): Evaluation {
   if (!flag.enabled) return served(flag, flag.offVariant, Reason.Disabled);
+
+  if (flag.prerequisites !== undefined && flag.prerequisites.length > 0) {
+    const unmet = unmetPrerequisite(flag, context, resolved, trail);
+    if (unmet !== null) return putMeta(served(flag, flag.offVariant, Reason.Disabled), "prerequisite", unmet);
+  }
 
   const target = targetVariant(flag, context);
   if (target !== null) return served(flag, target, Reason.TargetingMatch);

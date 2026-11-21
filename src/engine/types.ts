@@ -126,6 +126,17 @@ export interface Target {
 }
 
 /**
+ * Latch addition (LAT-23): this flag works only while another flag serves one of its variants. Optional on the flag:
+ * a flag without the field is evaluated exactly as in Inkress.
+ */
+export interface Prerequisite {
+  /** The parent flag's key. */
+  readonly flag: string;
+  /** The parent variant key that must be served for the same context. */
+  readonly variant: string;
+}
+
+/**
  * Api.Flags.Schema.Flag as the evaluator reads it. In Latch this is a compiled flag: project-level fields
  * (key, kind, variants, salt) merged with one environment's flag_configs row.
  */
@@ -143,6 +154,8 @@ export interface Flag {
   /** Latch (V2 plan phase 1): unsigned client contexts get the off variant. */
   readonly requiresSignedContext: boolean;
   readonly version: number;
+  /** Latch (LAT-23): flags that must serve a given variant first, else this flag serves its off variant. Absent means none. */
+  readonly prerequisites?: readonly Prerequisite[];
 }
 
 /** Api.Flags.Schema.Segment (conditions never reference another segment). */
@@ -160,6 +173,8 @@ export interface Segment {
 export interface Resolved {
   readonly segments: ReadonlyMap<string, Segment>;
   readonly planFeatures: ReadonlyMap<string, JsonValue>;
+  /** Latch (LAT-23): the environment's flags by key, so a prerequisite can be looked up. Only read for flags that have prerequisites. */
+  readonly flags?: ReadonlyMap<string, Flag>;
 }
 
 /** A context after validation: a JSON object (Api.Flags.Context.t). */
