@@ -40,3 +40,14 @@ pnpm test
 ## License
 
 MIT
+
+## Typed flag keys (optional)
+
+The SDK works with plain string keys. If you want your editor and build to catch a misspelt, renamed or removed flag, generate a types file from your project:
+
+```sh
+LATCH_API_TOKEN=lat_… npx github:inkress/latch-node latch-generate \
+  --project <project key> --api <your Latch URL> --out src/latch-flags.generated.ts
+```
+
+The token needs the `flags:read` scope. The file holds `LatchFlag` (every key by a readable name, e.g. `LatchFlag.PerksHeroImage`), `LatchFlagKind`, `LatchFlagValues` (the value type of each flag, with the allowed values of string flags) and `LatchBooleanFlagKey`. Commit it, and run the command again after changing flags in Latch. `--check` exits 1 when the file is out of date, for CI.
